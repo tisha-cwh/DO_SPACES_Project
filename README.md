@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DO Spaces Demo
 
-## Getting Started
+Basic Next.js app: enter a **Name**, pick a **Thumbnail** image, upload it to
+**DigitalOcean Spaces** (S3-compatible) via a Server Action, and save the
+record in **Neon Postgres** via Prisma. Uploaded items are listed on the
+home page.
 
-First, run the development server:
+## Tech stack
+
+- Next.js 16
+- Prisma 7.10.0 + `@prisma/adapter-neon` (Neon serverless driver adapter)
+- AWS SDK v3 (`@aws-sdk/client-s3`) pointed at the DO Spaces endpoint
+- Tailwind CSS
+
+## Setup
+
+### 1. Fill in `.env`
+
+This repo does not (and should not) contain real credentials. Open `.env`
+and fill in:
+
+```
+DATABASE_URL=              # Neon connection string (Neon dashboard -> Connection Details)
+DO_SPACES_ENDPOINT=        # e.g. https://nyc3.digitaloceanspaces.com
+DO_SPACES_REGION=          # e.g. nyc3
+DO_SPACES_BUCKET=          # your Space's name
+DO_SPACES_KEY=             # Spaces access key
+DO_SPACES_SECRET=          # Spaces secret key
+DO_SPACES_PUBLIC_URL=      # optional: CDN base URL, otherwise auto-derived
+```
+
+### 2. Push the schema to your database
+
+```bash
+npx prisma db push
+```
+
+(Or `npx prisma migrate dev` if you'd rather track migrations.)
+
+### 3. Run the app
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Visit http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How it works
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- [prisma/schema.prisma](prisma/schema.prisma) — single `Item` model: `name`, `thumbnailUrl`, `thumbnailKey`.
+- [src/lib/prisma.ts](src/lib/prisma.ts) — Prisma client using the Neon adapter, lazily created so a missing `DATABASE_URL` doesn't crash the build.
+- [src/lib/spaces.ts](src/lib/spaces.ts) — S3 client configured for the DO Spaces endpoint, plus a helper to build the public file URL.
+- [src/app/actions.ts](src/app/actions.ts) — `createItem` Server Action: validates input, uploads the file to Spaces, then writes the row to the database.
+- [src/components/UploadForm.tsx](src/components/UploadForm.tsx) — the form (Name + Thumbnail file input).
+- [src/app/page.tsx](src/app/page.tsx) — server component that renders the form and lists saved items.
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Make sure your Space's file permissions allow public read on uploaded
+objects (the action uploads with `ACL: public-read`) if you want the
+thumbnails to be viewable directly via the returned URL.
